@@ -47,6 +47,7 @@ $$\mathbf{c}_t = \begin{bmatrix} v_x^{\text{target}} & v_y^{\text{target}} & \om
 $$\mathbf{a}_t = \begin{bmatrix} q_1^{\text{target}} & \dots & q_{12}^{\text{target}} \end{bmatrix}^\top \in \mathbb{R}^{12}$$
 
 Tracked by a PD law at 1 kHz:
+
 $$\boldsymbol{\tau}_t = \mathbf{K}_p(\mathbf{a}_t - \mathbf{q}_t) + \mathbf{K}_d(\mathbf{0} - \dot{\mathbf{q}}_t)$$
 
 ---
@@ -66,6 +67,7 @@ $$\mathbf{H} = \big[\mathbf{h}_{\text{base}};\ \mathbf{h}_{\text{legs}};\ \mathb
 The **action token** additionally receives a **flow-time embedding**
 $\tau(t)$ (sinusoidal → MLP) so the network knows where it is on the ODE
 trajectory:
+
 $$\mathbf{h}_{\text{action}} \leftarrow \mathbf{W}_{\text{action}}\mathbf{a}_t^{(\text{noisy})} + \mathbf{b}_{\text{action}} + \tau(t)$$
 
 ---
@@ -77,17 +79,21 @@ Only the **attention** is shared, so tokens can cross-talk while preserving
 per-modality magnitude/semantics. A block is repeated $L$ times.
 
 **Per-token, pre-attention (decoupled):**
+
 $$\mathbf{h}_i' = \text{LayerNorm}_i(\mathbf{h}_i), \qquad \mathbf{Q}_i = \mathbf{W}_Q^i \mathbf{h}_i', \quad \mathbf{K}_i = \mathbf{W}_K^i \mathbf{h}_i', \quad \mathbf{V}_i = \mathbf{W}_V^i \mathbf{h}_i'$$
 
 All **5** tokens are projected.
 
 **Shared attention** over the stacked sequence:
+
 $$\mathbf{Z} = \text{Softmax}\left(\frac{\mathbf{Q}\,\mathbf{K}^\top}{\sqrt{d}}\right)\mathbf{V} \in \mathbb{R}^{5 \times 256}$$
 
 **Decoupled FFN experts** (residual), each token routed to its own MLP:
+
 $$\mathbf{h}_i \leftarrow \mathbf{h}_i + \text{FFN}_i(\mathbf{Z}[i])$$
 
 **Heads** read the final block:
+
 $$\hat{\mathbf{s}}_{t+1} = \text{Head}_{\text{dyn}}(\mathbf{z}_{\text{base}}) \in \mathbb{R}^{12}, \qquad \mathbf{v}_\theta = \text{Head}_{\text{act}}(\mathbf{z}_{\text{action}}) \in \mathbb{R}^{12}$$
 
 ---
@@ -105,6 +111,7 @@ We use **rectified-flow** convention: a straight path from noise to data.
 
 **Sampling** (3 Euler steps, $dt = \tfrac{1}{3}$), integrating **forward** from
 noise at $t = 0$ to the joint targets at $t = 1$:
+
 $$\mathbf{a} \leftarrow \mathbf{a} + dt \cdot \mathbf{v}_\theta(\mathbf{a}, t, \mathbf{C}),\quad t \in \{0,\ \tfrac{1}{3},\ \tfrac{2}{3}\}$$
 
 ```
@@ -116,7 +123,9 @@ The 3 steps are ODE **integration** steps that denoise a single action — not a
 temporal horizon. Action-chunking (predict $H \times 12$, execute the first) is
 an optional extension.
 
-Context for every step: $\mathbf{C} = \{\mathbf{s}_{\text{base}}, \mathbf{s}_{\text{legs}}, \mathbf{s}_{\text{contacts}}, \mathbf{c}_t, \mathbf{z}_{\text{plan}}\}$.
+Context for every step:
+
+$$\mathbf{C} = \{\mathbf{s}_{\text{base}}, \mathbf{s}_{\text{legs}}, \mathbf{s}_{\text{contacts}}, \mathbf{c}_t, \mathbf{z}_{\text{plan}}\}$$
 
 ---
 
@@ -141,6 +150,7 @@ DEPLOY:  context  → prior      → z_prior      → flow-matching action head
 
 Default alignment is **MSE with stop-gradient** on a deterministic latent (a
 VAE/KL variant is an option):
+
 $$\mathcal{L}_{\text{align}} = \big\| \mathbf{z}_{\text{prior}} - \text{sg}(\mathbf{z}_{\text{posterior}}) \big\|^2$$
 
 ---
@@ -150,12 +160,15 @@ $$\mathcal{L}_{\text{align}} = \big\| \mathbf{z}_{\text{prior}} - \text{sg}(\mat
 $$\mathcal{L}_{\text{total}} = \lambda_{\text{FM}}\,\mathcal{L}_{\text{FM}} + \lambda_{\text{dyn}}\,\mathcal{L}_{\text{dyn}} + \lambda_{\text{align}}\,\mathcal{L}_{\text{align}}$$
 
 **Flow matching** (single random $t\sim\mathcal{U}(0,1)$ per sample):
+
 $$\mathcal{L}_{\text{FM}} = \mathbb{E}_{t,\,\mathbf{a}^{(0)},\,\mathbf{a}_{\text{clean}}} \big\| \mathbf{v}_\theta(\mathbf{a}_t, t, \mathbf{C}) - (\mathbf{a}_{\text{clean}} - \mathbf{a}^{(0)}) \big\|^2$$
 
 **World dynamics** (next-state prediction from the base expert):
+
 $$\mathcal{L}_{\text{dyn}} = \big\| \hat{\mathbf{s}}_{t+1} - \mathbf{s}_{t+1}^{\text{actual}} \big\|^2$$
 
 **Latent alignment** (as above):
+
 $$\mathcal{L}_{\text{align}} = \big\| \mathbf{z}_{\text{prior}} - \text{sg}(\mathbf{z}_{\text{posterior}}) \big\|^2$$
 
 Suggested starting weights: $\lambda_{\text{FM}} = 1.0,\ \lambda_{\text{dyn}} = 0.5,\ \lambda_{\text{align}} = 0.1$.
