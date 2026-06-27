@@ -77,23 +77,18 @@ Only the **attention** is shared, so tokens can cross-talk while preserving
 per-modality magnitude/semantics. A block is repeated $L$ times.
 
 **Per-token, pre-attention (decoupled):**
-$$\mathbf{h}_i' = \text{LayerNorm}_i(\mathbf{h}_i),\qquad
-\mathbf{Q}_i = \mathbf{W}_Q^i \mathbf{h}_i',\;
-\mathbf{K}_i = \mathbf{W}_K^i \mathbf{h}_i',\;
-\mathbf{V}_i = \mathbf{W}_V^i \mathbf{h}_i'$$
+$$\mathbf{h}_i' = \text{LayerNorm}_i(\mathbf{h}_i), \qquad \mathbf{Q}_i = \mathbf{W}_Q^i \mathbf{h}_i', \quad \mathbf{K}_i = \mathbf{W}_K^i \mathbf{h}_i', \quad \mathbf{V}_i = \mathbf{W}_V^i \mathbf{h}_i'$$
 
-(All **5** tokens are projected — the prose/diagram in the original blueprint
-that showed only 3 was a simplification.)
+All **5** tokens are projected.
 
 **Shared attention** over the stacked sequence:
-$$\mathbf{Z} = \text{Softmax}\!\left(\frac{\mathbf{Q}\,\mathbf{K}^\top}{\sqrt{d}}\right)\mathbf{V} \in \mathbb{R}^{5 \times 256}$$
+$$\mathbf{Z} = \text{Softmax}\left(\frac{\mathbf{Q}\,\mathbf{K}^\top}{\sqrt{d}}\right)\mathbf{V} \in \mathbb{R}^{5 \times 256}$$
 
 **Decoupled FFN experts** (residual), each token routed to its own MLP:
 $$\mathbf{h}_i \leftarrow \mathbf{h}_i + \text{FFN}_i(\mathbf{Z}[i])$$
 
 **Heads** read the final block:
-$$\hat{\mathbf{s}}_{t+1} = \text{Head}_{\text{dyn}}(\mathbf{z}_{\text{base}}) \in \mathbb{R}^{12},\qquad
-\mathbf{v}_\theta = \text{Head}_{\text{act}}(\mathbf{z}_{\text{action}}) \in \mathbb{R}^{12}$$
+$$\hat{\mathbf{s}}_{t+1} = \text{Head}_{\text{dyn}}(\mathbf{z}_{\text{base}}) \in \mathbb{R}^{12}, \qquad \mathbf{v}_\theta = \text{Head}_{\text{act}}(\mathbf{z}_{\text{action}}) \in \mathbb{R}^{12}$$
 
 ---
 
@@ -108,20 +103,18 @@ We use **rectified-flow** convention: a straight path from noise to data.
 
 **Training** regresses the field to that target (see §5).
 
-**Sampling** (3 Euler steps, $dt = \tfrac{1}{3}$), integrating **forward**:
-$$\mathbf{a} \leftarrow \mathbf{a} + dt \cdot \mathbf{v}_\theta(\mathbf{a}, t, \mathbf{C}),\quad t \in \{0,\ \tfrac13,\ \tfrac23\}$$
-$$\mathbf{a}^{(0)}\xrightarrow{+dt\,\mathbf{v}}\mathbf{a}^{(1/3)}\xrightarrow{+dt\,\mathbf{v}}\mathbf{a}^{(2/3)}\xrightarrow{+dt\,\mathbf{v}}\mathbf{q}^{\text{target}}_t$$
+**Sampling** (3 Euler steps, $dt = \tfrac{1}{3}$), integrating **forward** from
+noise at $t = 0$ to the joint targets at $t = 1$:
+$$\mathbf{a} \leftarrow \mathbf{a} + dt \cdot \mathbf{v}_\theta(\mathbf{a}, t, \mathbf{C}),\quad t \in \{0,\ \tfrac{1}{3},\ \tfrac{2}{3}\}$$
 
-> **Correction vs. original blueprint.** The original subtracted `dt·v` from a
-> noise sample while regressing `v` toward `(a_clean − a_noisy)`; those two
-> conventions point in opposite directions. Here the integrator and the target
-> agree. (Equivalently, you may keep "t=1=noise" and flip the target sign — but
-> pick one.)
->
-> **Terminology.** The 3 steps are ODE **integration** steps that denoise a
-> single action — not a temporal "receding horizon." True receding-horizon /
-> action-chunking (predict `H×12`, execute the first) is an optional extension
-> (see plan, Step 9b).
+```
+a(0)  --+dt·v-->  a(1/3)  --+dt·v-->  a(2/3)  --+dt·v-->  q_target
+noise, t=0                                                 data, t=1
+```
+
+The 3 steps are ODE **integration** steps that denoise a single action — not a
+temporal horizon. Action-chunking (predict $H \times 12$, execute the first) is
+an optional extension.
 
 Context for every step: $\mathbf{C} = \{\mathbf{s}_{\text{base}}, \mathbf{s}_{\text{legs}}, \mathbf{s}_{\text{contacts}}, \mathbf{c}_t, \mathbf{z}_{\text{plan}}\}$.
 
@@ -157,8 +150,7 @@ $$\mathcal{L}_{\text{align}} = \big\| \mathbf{z}_{\text{prior}} - \text{sg}(\mat
 $$\mathcal{L}_{\text{total}} = \lambda_{\text{FM}}\,\mathcal{L}_{\text{FM}} + \lambda_{\text{dyn}}\,\mathcal{L}_{\text{dyn}} + \lambda_{\text{align}}\,\mathcal{L}_{\text{align}}$$
 
 **Flow matching** (single random $t\sim\mathcal{U}(0,1)$ per sample):
-$$\mathcal{L}_{\text{FM}} = \mathbb{E}_{t,\,\mathbf{a}^{(0)},\,\mathbf{a}_{\text{clean}}}
-\big\| \mathbf{v}_\theta(\mathbf{a}_t, t, \mathbf{C}) - (\mathbf{a}_{\text{clean}} - \mathbf{a}^{(0)}) \big\|^2$$
+$$\mathcal{L}_{\text{FM}} = \mathbb{E}_{t,\,\mathbf{a}^{(0)},\,\mathbf{a}_{\text{clean}}} \big\| \mathbf{v}_\theta(\mathbf{a}_t, t, \mathbf{C}) - (\mathbf{a}_{\text{clean}} - \mathbf{a}^{(0)}) \big\|^2$$
 
 **World dynamics** (next-state prediction from the base expert):
 $$\mathcal{L}_{\text{dyn}} = \big\| \hat{\mathbf{s}}_{t+1} - \mathbf{s}_{t+1}^{\text{actual}} \big\|^2$$
@@ -167,43 +159,3 @@ $$\mathcal{L}_{\text{dyn}} = \big\| \hat{\mathbf{s}}_{t+1} - \mathbf{s}_{t+1}^{\
 $$\mathcal{L}_{\text{align}} = \big\| \mathbf{z}_{\text{prior}} - \text{sg}(\mathbf{z}_{\text{posterior}}) \big\|^2$$
 
 Suggested starting weights: $\lambda_{\text{FM}} = 1.0,\ \lambda_{\text{dyn}} = 0.5,\ \lambda_{\text{align}} = 0.1$.
-
----
-
-## 6. Planned repo layout
-
-```
-s-motf/
-├── README.md                  # this file
-├── IMPLEMENTATION_PLAN.md     # step-by-step build order
-├── configs/default.yaml       # dims, weights, lr, horizon
-├── smotf/
-│   ├── data/                  # dataset + synthetic generator + (later) MuJoCo
-│   ├── model/
-│   │   ├── tokenizer.py       # per-modality projections + time embed
-│   │   ├── mot.py             # decoupled LN/QKV/FFN + shared attention
-│   │   ├── heads.py           # dynamics head, velocity-field head
-│   │   ├── plan.py            # prior + posterior encoders
-│   │   ├── flow.py            # interpolation, target, 3-step sampler
-│   │   └── smotf.py           # assembled module + loss
-│   ├── train.py
-│   └── rollout.py             # closed-loop eval (sim)
-└── tests/                     # shape + sign-convention sanity tests
-```
-
----
-
-## 7. Viability summary
-
-| Aspect | Status |
-|---|---|
-| Fits on a single T4 | ✅ model is < a few M params |
-| 50 Hz inference (3 fwd passes) | ✅ trivially within 20 ms |
-| MoT / flow-matching / Play-LMP composition | ✅ sound and mutually compatible |
-| Flow-matching sign convention | ⚠️ fixed here (was inconsistent) |
-| Posterior encoder modality | ⚠️ proprioceptive (V-JEPA needs cameras) |
-| "State-Space" / "receding-horizon" naming | ⚠️ clarified (no SSM; 3 = integration steps) |
-| **Training data source** | ❗ **biggest gap** — start synthetic, then MuJoCo Go2 |
-
-Bottom line: a solid research/learning build. Validate the full pipeline on a
-synthetic dataset first (shapes + losses must move), then plug in real Go2 data.
