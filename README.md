@@ -104,7 +104,7 @@ We use **rectified-flow** convention: a straight path from noise to data.
 
 - $\mathbf{a}^{(0)} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$ at $t = 0$ (noise)
 - clean target $\mathbf{a}^{(1)} = \mathbf{a}_{\text{clean}}$ at $t = 1$ (data)
-- interpolation $\mathbf{a}_t = (1-t)\,\mathbf{a}^{(0)} + t\,\mathbf{a}_{\text{clean}}$
+- interpolation $`\mathbf{a}_t {=} (1-t)\mathbf{a}^{(0)} + t\mathbf{a}_{\text{clean}}`$
 - **target velocity** $\mathbf{u} = \mathbf{a}_{\text{clean}} - \mathbf{a}^{(0)}$ (constant along the path)
 
 **Training** regresses the field to that target (see §5).
