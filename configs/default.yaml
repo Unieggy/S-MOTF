@@ -1,0 +1,34 @@
+# s-motf — single source of truth for all dimensions and hyperparameters.
+# Rule: every module reads from here. Never hard-code 256 / 12 inside code.
+
+# --- Model width ---
+d: 256              # shared hidden width for all tokens
+n_blocks: 4         # number of stacked MoT blocks
+n_heads: 4          # attention heads (must divide d)
+
+# --- Per-modality input dimensions ---
+# Token order is LOAD-BEARING: [base, legs, contacts, command, action]
+# index 0 = base (dynamics head reads this), index 4 = action (velocity head reads this).
+dims:
+  base: 12          # RPY(3) + ang-vel(3) + lin-vel(3) + projected gravity(3)
+  legs: 24          # joint angles(12) + joint velocities(12)
+  contacts: 4       # foot contacts FL, FR, RL, RR
+  command: 3        # target body velocity vx, vy, wz
+  action: 12        # joint-angle targets
+
+# --- Latent plan (Play-LMP prior/posterior) ---
+plan_dim: 128       # width of z_plan
+future_horizon: 8   # H: number of future steps the posterior sees
+
+# --- Flow matching ---
+flow_steps: 3       # Euler integration steps at sampling time
+
+# --- Loss weights ---
+weights:
+  fm: 1.0           # flow-matching velocity regression
+  dyn: 0.5          # world-dynamics next-state prediction
+  align: 0.1        # prior <- stop-grad(posterior) alignment
+
+# --- Optimization ---
+lr: 3.0e-4
+batch: 256
