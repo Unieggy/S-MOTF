@@ -33,7 +33,7 @@ class MoTBlock(nn.Module):
         self.ln=nn.ModuleList([nn.LayerNorm(self.d) for _ in range(N_TOKENS)])
 
         #5 qkv projection layers maps 256 to 768
-        self.qkv=nn.ModuleList([nn.LayerNorm(self.d,3*self.d) for _ in range(N_TOKENS)])
+        self.qkv=nn.ModuleList([nn.Linear(self.d,3*self.d) for _ in range(N_TOKENS)])
 
         #output projections: maps the attention output 256 to 256. 5 separate layers
         self.proj_out=nn.ModuleList([nn.Linear(self.d,self.d) for _ in range(N_TOKENS)])
@@ -74,7 +74,7 @@ class MoTBlock(nn.Module):
 
         #per token projection
         #[B,5,256]
-        out=torch.stack([self.proj_out(out[:,i])for i in range(N_TOKENS)],dim=1)
+        out=torch.stack([self.proj_out[i](out[:,i])for i in range(N_TOKENS)],dim=1)
         return out
     
     def forward(self,x): #x[B,5,256]
@@ -117,7 +117,7 @@ if __name__=="__main__":
     cfg=load_config()
     backbone=MoTBackbone(cfg).eval()
     B=4
-    x=torch.randn(B,N_TOKENS,cfg,d)
+    x=torch.randn(B,N_TOKENS,cfg.d)
 
     y=backbone(x)
     print("shape:", tuple(y.shape))                       # (4, 5, 256)
