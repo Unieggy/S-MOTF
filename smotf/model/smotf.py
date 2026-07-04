@@ -75,7 +75,7 @@ class SMoTF(nn.Module):
 
         total=w.fm*L_fm+w.dyn*L_dyn
 
-        components={"total":total.item,"fm":L_fm.item(),"dyn":L_dyn.item()}
+        components={"total":total.item(),"fm":L_fm.item(),"dyn":L_dyn.item()}
 
         return total,components
     
