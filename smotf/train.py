@@ -30,7 +30,7 @@ def to_device(batch, device):
     return {k: v.to(device) for k, v in batch.items()}
 
 
-def overfit(steps=300,batch_size=64):
+def overfit(steps=1500,batch_size=64):
     """Memorize a single batch; both losses should approach ~0."""
     #extracts one batch and trains it for 300 times
 
