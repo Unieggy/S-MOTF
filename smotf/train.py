@@ -32,6 +32,8 @@ def to_device(batch, device):
 
 def overfit(steps=300,batch_size=64):
     """Memorize a single batch; both losses should approach ~0."""
+    #extracts one batch and trains it for 300 times
+
     cfg=load_config()
     device=pick_device()
     print("device:", device)
@@ -61,3 +63,55 @@ def overfit(steps=300,batch_size=64):
 
     print("\nOVERFIT PASS ✅" if comps["fm"] < 0.05 and comps["dyn"] < 0.05
           else "\nOVERFIT FAIL ❌ (losses did not collapse — check wiring)")
+    
+
+def train(epochs=20,batch_size=256):
+    """full training over synthetic dataset"""
+    cfg=load_config()
+    device=pick_device()
+    print("device:", device)
+
+    episodes=generate_synthetic_data(cfg,n_trajectories=200,trajectory_length=200)
+    ds = PlayWindowDataset(episodes, cfg)
+    loader = DataLoader(ds, batch_size=batch_size, shuffle=True, drop_last=True)
+
+    model = SMoTF(cfg).to(device)
+    opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs * len(loader))
+    best=float("inf") # track the lowest total loss
+
+    model.train()
+
+    for epoch in range(epochs):
+        running={"total": 0.0, "fm": 0.0, "dyn": 0.0}
+        #[256,dim]
+        for batch in loader:
+
+            batch=to_device(batch,device)
+            #forward pass, calculate the loss
+            total,comps=model.loss(batch)
+            opt.zero_grad()
+            total.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
+
+            opt.step()
+            sched.step()
+
+            #add the scalar float components to the running trackers
+            for k in running:
+                running[k]+=comps[k]
+        running = {k: v / len(loader) for k, v in running.items()}
+        print(f"epoch {epoch:3d} | total {running['total']:.5f} "
+              f"| fm {running['fm']:.5f} | dyn {running['dyn']:.5f}")
+        if running["total"] < best:
+            best = running["total"]
+            torch.save(model.state_dict(), "checkpoint_best.pt")
+
+if __name__=="__main__":
+    import sys
+    if len(sys.argv)>1 and sys.argv[1]=="train":
+        train()
+    else:
+        overfit()
+            
+
