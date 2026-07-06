@@ -110,20 +110,21 @@ if __name__ =="__main__":
           "contacts": torch.randn(B,cfg.dims.contacts),
           "command": torch.randn(B,cfg.dims.command),
      }
+     z_plan=torch.randn(B,cfg.plan_dim)
      a_noisy=torch.randn(B,cfg.dims.action)
      t=torch.rand(B)
-     H=tok(batch,a_noisy,t)
+     H=tok(batch,a_noisy,t,z_plan)
      print("H shape:",tuple(H.shape)) # 4,5,256
 
      #test, compute a secondary token array using alternative randomized time variables
 
-     H2=tok(batch,a_noisy,torch.rand(B))
+     H2=tok(batch,a_noisy,torch.rand(B),z_plan)
      rows_0_3_same = torch.allclose(H[:, :4], H2[:, :4])
      row_4_diff = not torch.allclose(H[:, 4], H2[:, 4])
      print("change t  -> rows 0-3 unchanged:", rows_0_3_same, "| row 4 changed:", row_4_diff)
 
      # --- changing a_noisy must change ONLY row 4 ---
-     H3 = tok(batch, torch.randn(B, cfg.dims.action), t)
+     H3 = tok(batch, torch.randn(B, cfg.dims.action), t,z_plan)
      rows_0_3_same = torch.allclose(H[:, :4], H3[:, :4])
      row_4_diff = not torch.allclose(H[:, 4], H3[:, 4])
      print("change a  -> rows 0-3 unchanged:", rows_0_3_same, "| row 4 changed:", row_4_diff)

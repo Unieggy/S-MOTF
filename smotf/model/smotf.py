@@ -95,7 +95,8 @@ class SMoTF(nn.Module):
         steps=steps or self.cfg.flow_steps
         B=context["base"].shape[0]
         a0 = torch.randn(B, self.cfg.dims.action, device=context["base"].device)# random noise
-        return sample(lambda a, t: self.velocity(a, t, context,z_plan), a0, steps=steps)
+        z_prior=self.prior(context)
+        return sample(lambda a, t: self.velocity(a, t, context,z_prior), a0, steps=steps)
 
 if __name__ == "__main__":
     from smotf import load_config
