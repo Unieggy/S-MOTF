@@ -25,7 +25,7 @@ class PriorEncoder(nn.Module):
         super().__init__()
         d=cfg.dims
         #total size of 4 state vectors=43
-        in_dim=d.base+d.legs+d.contacts+d.commands
+        in_dim=d.base+d.legs+d.contacts+d.command
         #simple mlp to map B,43(cuz only one step so no extra dim in the middle) to B,256 to B,128
         self.net=nn.Sequential(
             nn.Linear(in_dim,cfg.d),

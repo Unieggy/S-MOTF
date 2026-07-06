@@ -70,12 +70,14 @@ class Tokenizer(nn.Module):
                 "contacts": nn.Linear(dims.contacts,d),
                 "command": nn.Linear(dims.command,d),
                 "action": nn.Linear(dims.action,d),#B,12 to B,256
+                
         })
+        self.plan_proj=nn.Linear(cfg.plan_dim,cfg.d) #128 to 256
 
         self.time_embed=SinusoidalTimeEmbed(d) # instantiate the time encoder obj
 
 
-    def forward(self,batch,a_noisy,t):
+    def forward(self,batch,a_noisy,t,z_plan):
          
          #linear mapping over all 5 distinct modules
          tokens={
@@ -85,7 +87,7 @@ class Tokenizer(nn.Module):
               "command": self.proj["command"](batch["command"]),
 
               #action conditioning injection: add the time embed
-              "action": self.proj["action"](a_noisy)+self.time_embed(t),
+              "action": self.proj["action"](a_noisy)+self.time_embed(t)+self.plan_proj(z_plan),
          }
 
 

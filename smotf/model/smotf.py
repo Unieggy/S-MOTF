@@ -21,7 +21,7 @@ from smotf.model.tokenizer import Tokenizer
 from smotf.model.mot import MoTBackbone
 from smotf.model.heads import DynamicsHead,VelocityHead
 from smotf.model.flow import make_training_pair, sample
-
+from smotf.model.plan import PriorEncoder,PosteriorEncoder
 
 class SMoTF(nn.Module):
     def __init__(self,cfg):
@@ -32,34 +32,41 @@ class SMoTF(nn.Module):
         self.backbone=MoTBackbone(cfg)
         self.dyn_head=DynamicsHead(cfg)
         self.vel_head=VelocityHead(cfg)
+        self.prior=PriorEncoder(cfg)
+        self.posterior=PosteriorEncoder(cfg)
     
-    def _encode(self,context,a,t):
+    def _encode(self,context,a,t,z_plan):
         """
         Takes raw dict context and aciton a and time t, run the tokenizer and the mot
         """
-        H=self.tokenizer(context,a,t) #B,5,d
+        H=self.tokenizer(context,a,t,z_plan) #B,5,d
         return self.backbone(H)
     
-    def velocity(self,a,t,context):
+    def velocity(self,a,t,context,z_plan):
         """velocity field for sampling"""
 
-        Z=self._encode(context,a,t) 
+        Z=self._encode(context,a,t,z_plan) 
         return self.vel_head(Z) #B,action_dim
     
     def forward(self,batch):
+        z_prior=self.prior(batch)
+        z_post=self.posterior(batch["s_future"],batch["future_mask"])
+        z_plan=z_post if self.training else z_prior
+
         a_clean=batch["action"] #ground truth
 
         #generate flow matching training pair
         a0,a_t,t,u_target=make_training_pair(a_clean)
 
         #pass the state dict, the noisy action and time
-        Z=self._encode(batch,a_t,t)
+        Z=self._encode(batch,a_t,t,z_plan)
 
         return {
             "v": self.vel_head(Z),             # predicted velocity   [B, action_dim]
             "u_target": u_target,              # target velocity      [B, action_dim]
             "s_hat": self.dyn_head(Z),         # predicted next state [B, base_dim]
             "s_next": batch["s_next"],         # target next state    [B, base_dim]
+            "z_prior":z_prior,"z_post":z_post,
         }
     
     def loss(self,batch):
@@ -72,10 +79,11 @@ class SMoTF(nn.Module):
         L_fm=F.mse_loss(out["v"],out["u_target"])
 
         L_dyn=F.mse_loss(out["s_hat"],out["s_next"])
+        L_align=F.mse_loss(out["z_prior"],out["z_post"].detach())
 
-        total=w.fm*L_fm+w.dyn*L_dyn
+        total=w.fm*L_fm+w.dyn*L_dyn+w.align*L_align
 
-        components={"total":total.item(),"fm":L_fm.item(),"dyn":L_dyn.item()}
+        components={"total":total.item(),"fm":L_fm.item(),"dyn":L_dyn.item(),"align":L_align.item()}
 
         return total,components
     
@@ -87,7 +95,7 @@ class SMoTF(nn.Module):
         steps=steps or self.cfg.flow_steps
         B=context["base"].shape[0]
         a0 = torch.randn(B, self.cfg.dims.action, device=context["base"].device)# random noise
-        return sample(lambda a, t: self.velocity(a, t, context), a0, steps=steps)
+        return sample(lambda a, t: self.velocity(a, t, context,z_plan), a0, steps=steps)
 
 if __name__ == "__main__":
     from smotf import load_config
