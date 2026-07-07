@@ -1,1 +1,10 @@
 IMPLEMENTATION_PLAN.md
+
+# Model checkpoints / training artifacts
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+checkpoint*
+checkpoints/
+**/checkpoints/
