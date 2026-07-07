@@ -26,7 +26,7 @@ blocks) so it trains and runs on a single T4 (Colab) in real time.
 ## 0. Task overview
 
 `s-motf` runs a **50 Hz** closed-loop controller (20 ms loop) for a **12-DoF
-quadruped** (e.g. Unitree Go2) walking on flat ground. Each loop:
+quadruped** (e.g. Unitree Go1/Go2) walking on flat ground. Each loop:
 
 - A high-level command sets desired body velocity.
 - The model observes proprioceptive state.
