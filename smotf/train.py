@@ -107,6 +107,48 @@ def train(epochs=20,batch_size=256):
             best = running["total"]
             torch.save(model.state_dict(), "checkpoint_best.pt")
 
+
+def train_real(epochs=30, batch_size=256, data="go1_data.npz"):
+    """Behavior-clone the Go1 teacher on recorded real data (with normalization)."""
+    from smotf.data.go1 import load_go1_episodes
+    from smotf.data.dataset import compute_norm_stats
+
+    cfg = load_config()
+    device = pick_device()
+    print("device:", device)
+
+    episodes = load_go1_episodes(data)
+    stats = compute_norm_stats(episodes)              # real channels vary wildly -> normalize
+    torch.save(stats, "norm_stats.pt")                # reuse identically at rollout
+    ds = PlayWindowDataset(episodes, cfg, stats=stats)
+    loader = DataLoader(ds, batch_size=batch_size, shuffle=True, drop_last=True)
+
+    model = SMoTF(cfg).to(device)
+    opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs * len(loader))
+
+    best = float("inf")
+    model.train()
+    for epoch in range(epochs):
+        running = {"total": 0.0, "fm": 0.0, "dyn": 0.0, "align": 0.0}
+        for batch in loader:
+            batch = to_device(batch, device)
+            total, comps = model.loss(batch)
+            opt.zero_grad()
+            total.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            opt.step()
+            sched.step()
+            for k in running:
+                running[k] += comps.get(k, 0.0)
+        running = {k: v / len(loader) for k, v in running.items()}
+        print(f"epoch {epoch:3d} | total {running['total']:.4f} | fm {running['fm']:.4f} "
+              f"| dyn {running['dyn']:.4f} | align {running['align']:.4f}")
+        if running["total"] < best:
+            best = running["total"]
+            torch.save(model.state_dict(), "checkpoint_go1.pt")
+    print("saved checkpoint_go1.pt")
+
 if __name__=="__main__":
     import sys
     if len(sys.argv)>1 and sys.argv[1]=="train":
