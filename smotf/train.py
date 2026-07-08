@@ -151,8 +151,11 @@ def train_real(epochs=30, batch_size=256, data="go1_data.npz"):
 
 if __name__=="__main__":
     import sys
-    if len(sys.argv)>1 and sys.argv[1]=="train":
+    arg=sys.argv[1] if len(sys.argv)>1 else ""
+    if arg=="train":
         train()
+    elif arg=="real":
+        train_real()
     else:
         overfit()
             
