@@ -108,14 +108,23 @@ def train(epochs=20,batch_size=256):
             torch.save(model.state_dict(), "checkpoint_best.pt")
 
 
-def train_real(epochs=30, batch_size=256, data="go1_data.npz"):
-    """Behavior-clone the Go1 teacher on recorded real data (with normalization)."""
+def train_real(epochs=30, batch_size=256, data="go1_data.npz",
+               tag="go1", dyn_weight=None, use_plan=None):
+    """Behavior-clone the Go1 teacher on recorded real data (with normalization).
+
+    Ablations: dyn_weight=0.0 removes the world model; use_plan=False removes the
+    latent plan. `tag` names the checkpoint -> checkpoint_<tag>.pt.
+    """
     from smotf.data.go1 import load_go1_episodes
     from smotf.data.dataset import compute_norm_stats
 
     cfg = load_config()
+    if dyn_weight is not None:
+        cfg.weights.dyn = dyn_weight       # ablation: no world model
+    if use_plan is not None:
+        cfg.use_plan = use_plan            # ablation: no latent plan
     device = pick_device()
-    print("device:", device)
+    print(f"device: {device} | tag={tag} | dyn={cfg.weights.dyn} | use_plan={cfg.get('use_plan', True)}")
 
     episodes = load_go1_episodes(data)
     stats = compute_norm_stats(episodes)              # real channels vary wildly -> normalize
@@ -146,8 +155,8 @@ def train_real(epochs=30, batch_size=256, data="go1_data.npz"):
               f"| dyn {running['dyn']:.4f} | align {running['align']:.4f}")
         if running["total"] < best:
             best = running["total"]
-            torch.save(model.state_dict(), "checkpoint_go1.pt")
-    print("saved checkpoint_go1.pt")
+            torch.save(model.state_dict(), f"checkpoint_{tag}.pt")
+    print(f"saved checkpoint_{tag}.pt")
 
 if __name__=="__main__":
     import sys
@@ -155,7 +164,11 @@ if __name__=="__main__":
     if arg=="train":
         train()
     elif arg=="real":
-        train_real()
+        train_real()                                    # full s-motf
+    elif arg=="abl_nodyn":
+        train_real(tag="nodyn", dyn_weight=0.0)         # ablation: no world model
+    elif arg=="abl_noplan":
+        train_real(tag="noplan", use_plan=False)        # ablation: no latent plan
     else:
         overfit()
             

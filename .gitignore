@@ -8,3 +8,5 @@ IMPLEMENTATION_PLAN.md
 checkpoint*
 checkpoints/
 **/checkpoints/
+rollout_qpos.npz
+save_media.py

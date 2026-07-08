@@ -27,6 +27,7 @@ class SMoTF(nn.Module):
     def __init__(self,cfg):
         super().__init__()
         self.cfg=cfg
+        self.use_plan=cfg.get("use_plan",True)   # ablation switch: latent plan on/off
 
         self.tokenizer=Tokenizer(cfg)
         self.backbone=MoTBackbone(cfg)
@@ -49,9 +50,15 @@ class SMoTF(nn.Module):
         return self.vel_head(Z) #B,action_dim
     
     def forward(self,batch):
-        z_prior=self.prior(batch)
-        z_post=self.posterior(batch["s_future"],batch["future_mask"])
-        z_plan=z_post if self.training else z_prior
+        if self.use_plan:
+            z_prior=self.prior(batch)
+            z_post=self.posterior(batch["s_future"],batch["future_mask"])
+            z_plan=z_post if self.training else z_prior
+        else:
+            # ablation: no latent plan -> feed a zero plan, no prior/posterior
+            B=batch["base"].shape[0]
+            z_prior=z_post=None
+            z_plan=torch.zeros(B,self.cfg.plan_dim,device=batch["base"].device)
 
         a_clean=batch["action"] #ground truth
 
@@ -79,7 +86,10 @@ class SMoTF(nn.Module):
         L_fm=F.mse_loss(out["v"],out["u_target"])
 
         L_dyn=F.mse_loss(out["s_hat"],out["s_next"])
-        L_align=F.mse_loss(out["z_prior"],out["z_post"].detach())
+        if self.use_plan:
+            L_align=F.mse_loss(out["z_prior"],out["z_post"].detach())
+        else:
+            L_align=torch.zeros((),device=out["v"].device)
 
         total=w.fm*L_fm+w.dyn*L_dyn+w.align*L_align
 
@@ -95,7 +105,10 @@ class SMoTF(nn.Module):
         steps=steps or self.cfg.flow_steps
         B=context["base"].shape[0]
         a0 = torch.randn(B, self.cfg.dims.action, device=context["base"].device)# random noise
-        z_prior=self.prior(context)
+        if self.use_plan:
+            z_prior=self.prior(context)
+        else:
+            z_prior=torch.zeros(B, self.cfg.plan_dim, device=context["base"].device)
         return sample(lambda a, t: self.velocity(a, t, context,z_prior), a0, steps=steps)
 
 if __name__ == "__main__":

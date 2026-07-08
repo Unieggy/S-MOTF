@@ -19,6 +19,7 @@ dims:
 # --- Latent plan (Play-LMP prior/posterior) ---
 plan_dim: 128       # width of z_plan
 future_horizon: 8   # H: number of future steps the posterior sees
+use_plan: true      # ablation switch: set false to disable the latent plan
 
 # --- Flow matching ---
 flow_steps: 3       # Euler integration steps at sampling time
