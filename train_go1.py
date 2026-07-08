@@ -19,7 +19,7 @@ import functools
 import pickle
 
 import jax
-from mujoco_playground import registry
+from mujoco_playground import registry, wrapper
 from mujoco_playground.config import locomotion_params
 from brax.training.agents.ppo import train as ppo
 from brax.training.agents.ppo import networks as ppo_networks
@@ -45,6 +45,7 @@ def main():
 
     make_inference_fn, params, _ = ppo.train(
         environment=env,
+        wrap_env_fn=wrapper.wrap_for_brax_training,   # Playground's MjxEnv wrapper (not brax's default)
         network_factory=network_factory,
         progress_fn=progress,
         **ppo_params,
