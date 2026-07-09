@@ -23,6 +23,51 @@ blocks) so it trains and runs on a single T4 (Colab) in real time.
 
 ---
 
+## Demo
+
+![s-motf controlling a Unitree Go1](assets/rollout.gif)
+
+s-motf behavior-cloned from an RL teacher, deployed in MuJoCo (prior-only, 3-step
+flow sampling). Forward-velocity command, closed loop at 50 Hz.
+
+## Results — Unitree Go1, flat terrain
+
+Behavior cloning of a PPO teacher (MuJoCo Playground `Go1JoystickFlatTerrain`),
+evaluated over 20 episodes of 800 steps in the same environment. Metrics: episode
+return (env reward), survival (upright steps / 800), and command-tracking error.
+
+| Policy | Method | Return ↑ | Survival ↑ | Track err ↓ |
+|---|---|---:|---:|---:|
+| RL teacher | PPO *(BC ceiling)* | 24.9 ± 2.6 | 787 / 800 | 0.083 |
+| **s-motf (ours)** | MoT + flow-matching BC | **23.8 ± 6.0** | **748 / 800** | 0.122 |
+| MLP baseline | naive state→action BC | 17.7 ± 11.2 | 576 / 800 | 0.189 |
+
+**Takeaways.** s-motf **clones the RL expert to ~96% of its return** (23.8 vs 24.9),
+and is **substantially more robust than naive MLP behavior cloning** over long
+horizons — **+172 survival steps (748 vs 576), ~2× lower variance, and lower
+tracking error**. The MLP accumulates error and falls; the generative flow policy
+stays on-distribution.
+
+<details>
+<summary>Ablations (honest)</summary>
+
+| Variant | Return | Survival |
+|---|---:|---:|
+| s-motf (full) | 23.8 ± 6.0 | 748 |
+| − world model (`L_dyn=0`) | 25.1 ± 2.7 | 786 |
+| − latent plan (`z_plan` off) | 23.5 ± 5.4 | 744 |
+
+On *flat walking* the world model and latent plan do **not** improve BC — the task
+is unimodal and reactive, so they add no signal (the `L_dyn` auxiliary slightly
+competes with the cloning objective). Their value is expected to appear on
+**multi-skill / multimodal** tasks, where a single generative model must hold
+several conflicting behaviors — see the multi-skill experiment in the plan.
+</details>
+
+> Reproduce: `python -m smotf.train real` (train) then `python eval_go1.py` (table).
+
+---
+
 ## 0. Task overview
 
 `s-motf` runs a **50 Hz** closed-loop controller (20 ms loop) for a **12-DoF
