@@ -25,10 +25,12 @@ from mujoco_playground.config import locomotion_params
 from brax.training.agents.ppo import train as ppo
 from brax.training.agents.ppo import networks as ppo_networks
 
-# usage: python train_go1.py [ENV_NAME] [OUTPUT.pkl]
+# usage: python train_go1.py [ENV_NAME] [OUTPUT.pkl] [NUM_TIMESTEPS]
 #   e.g. python train_go1.py Go1Footstand footstand_policy.pkl
+#        python train_go1.py Go1Getup     getup_policy.pkl     300000000   # train 300M steps
 ENV = sys.argv[1] if len(sys.argv) > 1 else "Go1JoystickFlatTerrain"
 OUT = sys.argv[2] if len(sys.argv) > 2 else "go1_policy.pkl"
+STEPS = int(sys.argv[3]) if len(sys.argv) > 3 else None   # optional: override num_timesteps
 
 
 def main():
@@ -37,6 +39,10 @@ def main():
 
     env = registry.load(ENV)
     ppo_params = dict(locomotion_params.brax_ppo_config(ENV))
+    print("default num_timesteps:", ppo_params.get("num_timesteps"))
+    if STEPS is not None:
+        ppo_params["num_timesteps"] = STEPS
+        print("overriding num_timesteps ->", STEPS)
 
     # Playground nests the network sizes under 'network_factory'; brax's ppo.train
     # wants an actual factory callable, so pop it out and build the partial.
