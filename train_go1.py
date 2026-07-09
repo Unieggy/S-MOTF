@@ -17,6 +17,7 @@ Phase 2 to record the real demonstration data that s-motf is cloned on.
 
 import functools
 import pickle
+import sys
 
 import jax
 from mujoco_playground import registry, wrapper
@@ -24,12 +25,15 @@ from mujoco_playground.config import locomotion_params
 from brax.training.agents.ppo import train as ppo
 from brax.training.agents.ppo import networks as ppo_networks
 
-ENV = "Go1JoystickFlatTerrain"      # flat-ground velocity-commanded Go1 walking
+# usage: python train_go1.py [ENV_NAME] [OUTPUT.pkl]
+#   e.g. python train_go1.py Go1Footstand footstand_policy.pkl
+ENV = sys.argv[1] if len(sys.argv) > 1 else "Go1JoystickFlatTerrain"
+OUT = sys.argv[2] if len(sys.argv) > 2 else "go1_policy.pkl"
 
 
 def main():
     print("JAX devices:", jax.devices())          # expect [CudaDevice(id=0)]
-    print("Training env:", ENV)
+    print("Training env:", ENV, "-> saving", OUT)
 
     env = registry.load(ENV)
     ppo_params = dict(locomotion_params.brax_ppo_config(ENV))
@@ -51,9 +55,9 @@ def main():
         **ppo_params,
     )
 
-    with open("go1_policy.pkl", "wb") as f:
+    with open(OUT, "wb") as f:
         pickle.dump({"env": ENV, "params": params, "network_factory": net_cfg}, f)
-    print("saved go1_policy.pkl  (the teacher)")
+    print(f"saved {OUT}  (teacher for {ENV})")
 
 
 if __name__ == "__main__":

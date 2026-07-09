@@ -164,7 +164,11 @@ if __name__=="__main__":
     if arg=="train":
         train()
     elif arg=="real":
-        train_real()                                    # full s-motf
+        train_real()                                    # full s-motf, single-skill
+    elif arg=="multi":
+        train_real(data="go1_multiskill.npz", tag="multi")           # multi-skill s-motf
+    elif arg=="multi_noplan":
+        train_real(data="go1_multiskill.npz", tag="multi_noplan", use_plan=False)  # multi, no plan
     elif arg=="abl_nodyn":
         train_real(tag="nodyn", dyn_weight=0.0)         # ablation: no world model
     elif arg=="abl_noplan":

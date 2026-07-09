@@ -73,4 +73,6 @@ def train_mlp(epochs=30, batch_size=256, data="go1_data.npz"):
 
 
 if __name__ == "__main__":
-    train_mlp()
+    import sys
+    data = sys.argv[1] if len(sys.argv) > 1 else "go1_data.npz"   # e.g. go1_multiskill.npz
+    train_mlp(data=data)
