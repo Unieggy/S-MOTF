@@ -64,6 +64,17 @@ def skill_onehot(skill_id):
     return c
 
 
+def command_vec(state, skill_id):
+    # [velocity(3), skill-id(3)]: env's velocity for walk, zeros for balance skills
+    if "command" in state.info:
+        vel = np.asarray(state.info["command"], np.float32)
+        if vel.shape[-1] != 3:
+            vel = np.zeros(3, np.float32)
+    else:
+        vel = np.zeros(3, np.float32)
+    return np.concatenate([vel, skill_onehot(skill_id)])   # [6]
+
+
 def make_context(stats, skill_id):
     nrm = lambda k, x: (torch.tensor(np.asarray(x), dtype=torch.float32) - stats[k]["mean"]) / stats[k]["std"]
     dnrm = lambda k, x: x * stats[k]["std"] + stats[k]["mean"]
@@ -73,13 +84,13 @@ def make_context(stats, skill_id):
             "base":     nrm("base", base_from_data(d))[None],
             "legs":     nrm("legs", legs_from_data(d))[None],
             "contacts": nrm("contacts", contacts_from(state))[None],
-            "command":  nrm("command", skill_onehot(skill_id))[None],   # tell it the skill
+            "command":  nrm("command", command_vec(state, skill_id))[None],   # velocity + skill
         }
     return context, dnrm
 
 
 def make_smotf(ckpt, use_plan, skill_id):
-    cfg = load_config(); cfg.use_plan = use_plan
+    cfg = load_config("configs/multiskill.yaml"); cfg.use_plan = use_plan
     m = SMoTF(cfg); m.load_state_dict(torch.load(ckpt, map_location="cpu")); m.eval()
     context, dnrm = make_context(torch.load("norm_stats.pt"), skill_id)
     def act(state, key):
@@ -91,7 +102,7 @@ def make_smotf(ckpt, use_plan, skill_id):
 
 def make_mlp(ckpt, skill_id):
     from mlp_baseline import MLPPolicy
-    cfg = load_config()
+    cfg = load_config("configs/multiskill.yaml")
     m = MLPPolicy(cfg); m.load_state_dict(torch.load(ckpt, map_location="cpu")); m.eval()
     context, dnrm = make_context(torch.load("norm_stats.pt"), skill_id)
     def act(state, key):

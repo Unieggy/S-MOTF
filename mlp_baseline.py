@@ -35,8 +35,8 @@ class MLPPolicy(nn.Module):
         return self.net(x)
 
 
-def train_mlp(epochs=30, batch_size=256, data="go1_data.npz"):
-    cfg = load_config()
+def train_mlp(epochs=30, batch_size=256, data="go1_data.npz", config=None):
+    cfg = load_config(config) if config else load_config()
     device = torch.device("cuda" if torch.cuda.is_available()
                           else "mps" if torch.backends.mps.is_available() else "cpu")
     print("device:", device)
@@ -74,5 +74,6 @@ def train_mlp(epochs=30, batch_size=256, data="go1_data.npz"):
 
 if __name__ == "__main__":
     import sys
-    data = sys.argv[1] if len(sys.argv) > 1 else "go1_data.npz"   # e.g. go1_multiskill.npz
-    train_mlp(data=data)
+    data = sys.argv[1] if len(sys.argv) > 1 else "go1_data.npz"      # e.g. go1_multiskill.npz
+    config = sys.argv[2] if len(sys.argv) > 2 else None              # e.g. configs/multiskill.yaml
+    train_mlp(data=data, config=config)

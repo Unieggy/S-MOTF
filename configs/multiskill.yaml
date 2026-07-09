@@ -1,0 +1,34 @@
+# s-motf — multi-skill config. Same as default.yaml EXCEPT the command holds
+# both velocity (3) AND a skill-id one-hot (3) = 6 dims, so one model can be told
+# both how fast to move (walk) and which skill to do.
+
+# --- Model width ---
+d: 256
+n_blocks: 4
+n_heads: 4
+
+# --- Per-modality input dimensions ---
+dims:
+  base: 12
+  legs: 24
+  contacts: 4
+  command: 6          # [vx, vy, wz, walk, footstand, getup]  (velocity + skill-id)
+  action: 12
+
+# --- Latent plan ---
+plan_dim: 128
+future_horizon: 8
+use_plan: true
+
+# --- Flow matching ---
+flow_steps: 3
+
+# --- Loss weights ---
+weights:
+  fm: 1.0
+  dyn: 0.5
+  align: 0.1
+
+# --- Optimization ---
+lr: 3.0e-4
+batch: 256

@@ -75,8 +75,8 @@ def main():
     key, rk = jax.random.split(key)
     state = reset(jax.random.split(rk, N_ENVS))
 
-    cmd = np.zeros((N_ENVS, NUM_SKILLS), np.float32)   # skill-id one-hot
-    cmd[:, SKILL_ID] = 1.0
+    onehot = np.zeros((N_ENVS, NUM_SKILLS), np.float32)   # skill-id one-hot
+    onehot[:, SKILL_ID] = 1.0
 
     fields = {k: [] for k in ["base", "legs", "contacts", "command", "action", "s_next"]}
     for t in range(T):
@@ -88,10 +88,20 @@ def main():
             contacts = np.asarray(state.info["last_contact"], np.float32)
         else:
             contacts = np.zeros((N_ENVS, 4), np.float32)
+
+        # command = [velocity(3), skill-id(3)]: env's velocity for walk, zeros for balance skills
+        if "command" in state.info:
+            vel = np.asarray(state.info["command"], np.float32)
+            if vel.ndim != 2 or vel.shape[-1] != 3:
+                vel = np.zeros((N_ENVS, 3), np.float32)
+        else:
+            vel = np.zeros((N_ENVS, 3), np.float32)
+        command = np.concatenate([vel, onehot], axis=-1)   # [N, 6]
+
         nstate = step(state, act)
         s_next = jax.vmap(base_from_data)(nstate.data)
         for k, v in [("base", base), ("legs", legs), ("contacts", contacts),
-                     ("command", cmd), ("action", np.asarray(act)), ("s_next", s_next)]:
+                     ("command", command), ("action", np.asarray(act)), ("s_next", s_next)]:
             fields[k].append(np.asarray(v))
         state = nstate
 
