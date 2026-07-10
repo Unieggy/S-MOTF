@@ -139,6 +139,13 @@ def evaluate(action_fn, env, reset, step):
 
 
 def main():
+    # load + jit each env ONCE (not per policy) -> 3 compiles instead of 12
+    print("compiling envs (one-time)...", flush=True)
+    ENVS = {}
+    for env_name, _, _ in SKILLS:
+        e = registry.load(env_name)
+        ENVS[env_name] = (e, jax.jit(e.reset), jax.jit(e.step))
+
     # rows = policy family; measured per skill
     print(f"\n{'policy':18} | " + " | ".join(f"{s[0][3:]:>22}" for s in SKILLS))
     print("-" * 90)
@@ -151,8 +158,7 @@ def main():
     ]:
         cells = []
         for env_name, skill_id, spec in SKILLS:
-            env = registry.load(env_name)
-            reset, step = jax.jit(env.reset), jax.jit(env.step)
+            env, reset, step = ENVS[env_name]
             if builder == "spec":
                 ok = os.path.exists(spec); fn = (lambda: make_specialist(spec, env)) if ok else None
             elif builder == "smotf":
@@ -164,9 +170,10 @@ def main():
             if fn is None:
                 cells.append("      (no ckpt)     ")
             else:
+                print(f"  running {name.strip()} on {env_name} ...", flush=True)
                 r, s = evaluate(fn(), env, reset, step)
                 cells.append(f"ret {r:6.1f}  surv {s:4.0f}")
-        print(f"{name:18} | " + " | ".join(cells))
+        print(f"{name:18} | " + " | ".join(cells), flush=True)
 
 
 if __name__ == "__main__":

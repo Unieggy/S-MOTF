@@ -9,4 +9,9 @@ checkpoint*
 checkpoints/
 **/checkpoints/
 rollout_qpos.npz
-save_media.py
+
+# Rollout / data artifacts (keep assets/ tracked)
+*.npz
+*.pkl
+/*.mp4
+mujoco_menagerie/

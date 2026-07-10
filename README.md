@@ -23,48 +23,143 @@ blocks) so it trains and runs on a single T4 (Colab) in real time.
 
 ---
 
-## Demo
+## Demo — one model, three skills
 
-![s-motf controlling a Unitree Go1](assets/rollout.gif)
+<table>
+  <tr>
+    <th align="center">Walk</th>
+    <th align="center">Footstand</th>
+    <th align="center">Getup</th>
+  </tr>
+  <tr>
+    <td><img src="assets/walk.gif"      width="260" alt="s-motf walking"></td>
+    <td><img src="assets/footstand.gif" width="260" alt="s-motf balancing on hind legs"></td>
+    <td><img src="assets/getup.gif"     width="260" alt="s-motf standing up after a fall"></td>
+  </tr>
+</table>
 
-s-motf behavior-cloned from an RL teacher, deployed in MuJoCo (prior-only, 3-step
-flow sampling). Forward-velocity command, closed loop at 50 Hz.
+A **single** s-motf — one set of weights — switched between skills by the command
+vector. Proprioception only, closed loop at 50 Hz, 3-step flow sampling.
 
-## Results — Unitree Go1, flat terrain
+---
 
-Behavior cloning of a PPO teacher (MuJoCo Playground `Go1JoystickFlatTerrain`),
-evaluated over 20 episodes of 800 steps in the same environment. Metrics: episode
-return (env reward), survival (upright steps / 800), and command-tracking error.
+## Results — Unitree Go1 (MuJoCo Playground)
 
-| Policy | Method | Return ↑ | Survival ↑ | Track err ↓ |
-|---|---|---:|---:|---:|
-| RL teacher | PPO *(BC ceiling)* | 24.9 ± 2.6 | 787 / 800 | 0.083 |
-| **s-motf (ours)** | MoT + flow-matching BC | **23.8 ± 6.0** | **748 / 800** | 0.122 |
-| MLP baseline | naive state→action BC | 17.7 ± 11.2 | 576 / 800 | 0.189 |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/results-dark.png">
+  <img alt="Episode return and survival for four policies across walk, footstand and getup" src="assets/results-light.png">
+</picture>
 
-**Takeaways.** s-motf **clones the RL expert to ~96% of its return** (23.8 vs 24.9),
-and is **substantially more robust than naive MLP behavior cloning** over long
-horizons — **+172 survival steps (748 vs 576), ~2× lower variance, and lower
-tracking error**. The MLP accumulates error and falls; the generative flow policy
-stays on-distribution.
+One command-conditioned s-motf is behavior-cloned from **three** PPO specialists
+(`Go1JoystickFlatTerrain`, `Go1Footstand`, `Go1Getup`) on pooled, skill-tagged
+data. Evaluated in each skill's own environment — 10 episodes × 500 steps.
+Cells are **episode return / upright steps**.
+
+| Policy | Models | Walk | Footstand | Getup |
+|---|:--:|---|---|---|
+| RL specialists *(BC ceiling)* | 3 | 15.5 / 500 | 19.8 / 500 | 29.5 / 462 |
+| **s-motf multi (ours)** | **1** | **14.9 / 485** | **16.4 / 416** | **25.3 / 408** |
+| s-motf — no latent plan | 1 | 15.6 / 500 | 14.6 / 372 | 29.3 / 458 |
+| MLP multi *(naive BC)* | 1 | 11.8 / 382 | **3.5 / 101** | 25.3 / 406 |
+
+**One model ≈ three specialists.** s-motf retains **96% / 83% / 86%** of each
+specialist's return while replacing three separate policies with one set of weights.
+
+**The naive generalist collapses.** Given identical data and capacity, the MLP fails
+on **footstand** — the skill least like walking — at **4.7× lower return (3.5 vs 16.4)**
+and **4.1× shorter survival (101 vs 416)**. MSE regression averages conflicting
+skills into an invalid "mean" action; the flow-matching head commits to one mode.
+On **walk** s-motf also leads (+26% return). On **getup** the two tie — the win
+appears exactly where multimodality bites, not everywhere.
 
 <details>
-<summary>Ablations (honest)</summary>
+<summary><b>Ablations &amp; the single-skill baseline (reported honestly)</b></summary>
 
-| Variant | Return | Survival |
-|---|---:|---:|
-| s-motf (full) | 23.8 ± 6.0 | 748 |
-| − world model (`L_dyn=0`) | 25.1 ± 2.7 | 786 |
-| − latent plan (`z_plan` off) | 23.5 ± 5.4 | 744 |
+**Latent plan — why removing it *helps* on two of three skills.**
 
-On *flat walking* the world model and latent plan do **not** improve BC — the task
-is unimodal and reactive, so they add no signal (the `L_dyn` auxiliary slightly
-competes with the cloning objective). Their value is expected to appear on
-**multi-skill / multimodal** tasks, where a single generative model must hold
-several conflicting behaviors — see the multi-skill experiment in the plan.
+The plan is trained with the **posterior** (which sees the future) but deployed with the
+**prior** (which only guesses it). That gap is a cost paid on *every* task: an imperfect
+`z_prior` injects approximation error into the action token, and the head — trained on
+posterior-quality plans — no longer receives them at deploy. The *benefit* only appears
+when the current state is **ambiguous**, i.e. proprioception alone doesn't determine what
+to do next and an intent vector disambiguates it.
+
+- **Walk** and **getup** are largely **reactive**: state + command already determine the
+  action (one gait; one recovery trajectory from a given fallen pose). The plan adds no
+  information, so only its prior-approximation error remains → removing it *helps*
+  (15.6/500 and 29.3/458 — essentially matching the specialists).
+- **Footstand** is an **unstable balance** task: the same proprioceptive state can precede
+  different corrections depending on phase and intent, so temporal consistency matters.
+  Here the plan pays for itself → keeping it *helps* (16.4/416 vs 14.6/372).
+
+The plan is therefore a **conditional** win: it buys disambiguation, and you only profit
+where the task is ambiguous. Note also that **even without the plan, s-motf beats the MLP
+on footstand (14.6 vs 3.5)** — so the **MoT + flow-matching head**, not the plan, is what
+prevents the collapse.
+
+**Single-skill, flat walking** (earlier experiment, 20 episodes × 800 steps):
+
+| Policy | Return ↑ | Survival ↑ | Track err ↓ |
+|---|---:|---:|---:|
+| RL teacher *(ceiling)* | 24.9 ± 2.6 | 787 / 800 | 0.083 |
+| s-motf | 23.8 ± 6.0 | 748 / 800 | 0.122 |
+| − world model (`L_dyn=0`) | 25.1 ± 2.7 | 786 / 800 | 0.091 |
+| − latent plan | 23.5 ± 5.4 | 744 / 800 | 0.102 |
+| MLP baseline | 17.7 ± 11.2 | 576 / 800 | 0.189 |
+
+On a *unimodal* task the world model and latent plan add nothing (the `L_dyn`
+auxiliary slightly competes with the cloning objective). s-motf still beats naive BC
+on long-horizon robustness (748 vs 576 survival). **BC's ceiling is its teacher** —
+s-motf never exceeds a specialist, and is not claimed to.
 </details>
 
-> Reproduce: `python -m smotf.train real` (train) then `python eval_go1.py` (table).
+---
+
+## Quickstart
+
+Two environments — the RL teacher (JAX/Brax) and the student (PyTorch) don't share a stack:
+
+```bash
+# student: s-motf itself (this is the whole dependency list)
+pip install torch pyyaml
+
+# teacher + simulation: MuJoCo Playground envs
+pip install "jax[cuda12]" mujoco mujoco-mjx brax playground
+```
+
+**Sanity check first — no simulator required.** s-motf trains on a synthetic,
+provably-learnable dataset before touching MuJoCo, so if the losses don't collapse the
+bug is in the model, not the data:
+
+```bash
+python -m smotf.train            # overfit one batch -> "OVERFIT PASS ✅"
+```
+
+**Full pipeline** — RL teachers → recorded demonstrations → one behavior-cloned student:
+
+```bash
+# 1. train an RL teacher per skill (PPO on MuJoCo Playground)
+python train_go1.py Go1JoystickFlatTerrain go1_policy.pkl
+python train_go1.py Go1Footstand           footstand_policy.pkl
+python train_go1.py Go1Getup               getup_policy.pkl 300000000   # getup needs more steps
+
+# 2. record skill-tagged demonstrations, pool them
+python collect_multiskill.py Go1JoystickFlatTerrain go1_policy.pkl       0 go1_walk.npz
+python collect_multiskill.py Go1Footstand           footstand_policy.pkl 1 go1_footstand.npz
+python collect_multiskill.py Go1Getup               getup_policy.pkl     2 go1_getup.npz
+python combine_skills.py go1_walk.npz go1_footstand.npz go1_getup.npz
+
+# 3. behavior-clone ONE s-motf on all three skills
+python -m smotf.train multi                    # -> checkpoint_multi.pt
+
+# 4. evaluate per skill, and render a rollout
+python eval_multiskill.py
+python rollout_multiskill.py Go1Footstand 1 rollout_footstand.npz
+python save_media.py rollout_footstand.npz footstand     # -> footstand.gif
+```
+
+Baselines: `python mlp_baseline.py go1_multiskill.npz configs/multiskill.yaml` (naive BC),
+`python -m smotf.train multi_noplan` (latent-plan ablation).
 
 ---
 
