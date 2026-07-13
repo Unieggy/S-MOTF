@@ -39,11 +39,31 @@ def compute_norm_stats(episodes):
     return stats
 
 class PlayWindowDataset(Dataset):
-    def __init__(self,episodes,cfg,stats=None):
+    """Per-timestep samples + the posterior's future window.
+
+    If ``world_horizon=K`` is given (Phase 2), each sample ALSO carries the
+    windows the world model needs to be rolled out K steps:
+
+        state          [40]      full observation at t   (base+legs+contacts)
+        a_future       [K, 12]   actions taken at t .. t+K-1  (drive the rollout)
+        r_future       [K]       rewards received at t .. t+K-1  (planner objective)
+        s_future_full  [K, 40]   full observations at t+1 .. t+K  (rollout targets)
+        wm_mask        [K]       True where the step is real, False past the episode end
+
+    Left as None (the default) the dataset behaves exactly as before, so BC
+    training is unaffected.
+    """
+
+    def __init__(self,episodes,cfg,stats=None,world_horizon=None):
         self.episodes=episodes
         self.H=cfg.future_horizon #steps into the future the posterior looks
         self.d_base=cfg.dims.base #base vector size
         self.stats=stats #normalized dict
+
+        # Phase 2: world-model rollout windows (opt-in)
+        self.K=world_horizon
+        self.d_action=cfg.dims.action
+        self.d_state=cfg.dims.base+cfg.dims.legs+cfg.dims.contacts   # 40 — the CLOSED state
 
         #we create a flat index list
         self.index=[]
@@ -95,7 +115,40 @@ class PlayWindowDataset(Dataset):
         sample["s_future"]=s_future
         sample["future_mask"]=mask
 
+        # ---- Phase 2: world-model rollout windows (only if world_horizon set) ----
+        if self.K is not None:
+            T=ep["base"].shape[0]
+            K=self.K
+
+            sample["state"]=self._full_state(ep,t)                      # [40] at t
+
+            a_future=torch.zeros(K,self.d_action)
+            r_future=torch.zeros(K)
+            s_future_full=torch.zeros(K,self.d_state)
+            wm_mask=torch.zeros(K,dtype=torch.bool)
+
+            for k in range(K):
+                # need action[t+k], reward[t+k] and the state they lead to: state[t+k+1]
+                if t+k+1 < T:
+                    a_future[k]=self._norm("action",ep["action"][t+k])
+                    r_future[k]=ep["reward"][t+k].reshape(-1)[0]        # raw reward (not normalized)
+                    s_future_full[k]=self._full_state(ep,t+k+1)
+                    wm_mask[k]=True
+
+            sample["a_future"]=a_future
+            sample["r_future"]=r_future
+            sample["s_future_full"]=s_future_full
+            sample["wm_mask"]=wm_mask
+
         return sample
+
+    def _full_state(self,ep,i):
+        """The CLOSED state the world model lives in: [base, legs, contacts] -> [40]."""
+        return torch.cat([
+            self._norm("base",     ep["base"][i]),
+            self._norm("legs",     ep["legs"][i]),
+            self._norm("contacts", ep["contacts"][i]),
+        ])
 
 if __name__=="__main__":
     from smotf import load_config

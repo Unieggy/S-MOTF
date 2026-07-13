@@ -78,7 +78,7 @@ def main():
     onehot = np.zeros((N_ENVS, NUM_SKILLS), np.float32)   # skill-id one-hot
     onehot[:, SKILL_ID] = 1.0
 
-    fields = {k: [] for k in ["base", "legs", "contacts", "command", "action", "s_next"]}
+    fields = {k: [] for k in ["base", "legs", "contacts", "command", "action", "s_next", "reward"]}
     for t in range(T):
         key, ak = jax.random.split(key)
         act, _ = policy(state.obs, ak)
@@ -100,8 +100,12 @@ def main():
 
         nstate = step(state, act)
         s_next = jax.vmap(base_from_data)(nstate.data)
+        # reward for taking `act` in `state` — the planner's objective (Phase 2)
+        reward = np.asarray(nstate.reward, np.float32)[:, None]      # [N, 1]
+
         for k, v in [("base", base), ("legs", legs), ("contacts", contacts),
-                     ("command", command), ("action", np.asarray(act)), ("s_next", s_next)]:
+                     ("command", command), ("action", np.asarray(act)), ("s_next", s_next),
+                     ("reward", reward)]:
             fields[k].append(np.asarray(v))
         state = nstate
 

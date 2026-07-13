@@ -31,6 +31,7 @@ def generate_synthetic_data(cfg,n_trajectories=100,trajectory_length=200):
     for _ in range(n_trajectories):
         #create empty lists to hold the history of this epi
         ep_base,ep_legs,ep_contacts,ep_command,ep_action,ep_next=[],[],[],[],[],[]
+        ep_reward=[]   # Phase 2: a deterministic (hence learnable) fake reward
 
         #random starting posture
         current_base=torch.randn(d_base)
@@ -53,12 +54,16 @@ def generate_synthetic_data(cfg,n_trajectories=100,trajectory_length=200):
             #add gaussian noise to the action since flow matching network needs messy data so it can learn
             noisy_action=clean_action+0.05*torch.randn_like(clean_action)
 
+            #deterministic (hence learnable) fake reward: stay near origin, act small
+            reward=-0.1*(current_base**2).sum()-0.01*(noisy_action**2).sum()
+
             #save all data into lists
             ep_base.append(current_base)
             ep_legs.append(current_legs)
             ep_command.append(current_command)
             ep_contacts.append(current_contacts)
             ep_action.append(noisy_action)
+            ep_reward.append(reward.reshape(1))
 
             #compute the next state
             physics_input=torch.cat([current_base,noisy_action])
@@ -72,7 +77,8 @@ def generate_synthetic_data(cfg,n_trajectories=100,trajectory_length=200):
             "contacts":torch.stack(ep_contacts),
             "action":torch.stack(ep_action),
             "command":torch.stack(ep_command),
-            "s_next":torch.stack(ep_next)
+            "s_next":torch.stack(ep_next),
+            "reward":torch.stack(ep_reward),      # [T, 1]
         }
         dataset.append(episode_dict)
 
