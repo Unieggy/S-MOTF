@@ -41,7 +41,7 @@ def train_world(data=None,epochs=50,K=5,batch_size=256,lr=3e-4):
     torch.save(stats,"norm_stats_world.pt")
 
     ds=PlayWindowDataset(episodes,cfg,stats=stats,world_horizon=K)
-    loader=Dataloader(ds,batch_size=batch_size,shuffle=True,drop_last=True)
+    loader=DataLoader(ds,batch_size=batch_size,shuffle=True,drop_last=True)
 
     device= torch.device("cuda" if torch.cuda.is_available()
                           else "mps" if torch.backends.mps.is_available() else "cpu")
@@ -74,6 +74,7 @@ def train_world(data=None,epochs=50,K=5,batch_size=256,lr=3e-4):
                 loss = loss + se
                 step_err[k]+=se.item()
              # a separate 1-step reward error just for logging (uses the untouched real start state)
+            
             rew_err += masked_mse(reward(batch["state"], batch["a_future"][:, 0]),
                                   batch["r_future"][:, 0], batch["wm_mask"][:, 0]).item()
 
@@ -81,7 +82,8 @@ def train_world(data=None,epochs=50,K=5,batch_size=256,lr=3e-4):
             loss.backward()                             # backprop through the K-step rollout
             opt.step()                                  # update world + reward weights
             nb += 1
-     # -------- THE GATE READOUT: per-horizon-step error, averaged over the epoch --------
+
+        # -------- THE GATE READOUT: per-horizon-step error, averaged over the epoch --------
         if epoch % 5 == 0 or epoch == epochs - 1:
             # step_err[k]/nb = mean state error when imagining k+1 steps ahead
             errs = " ".join(f"{k+1}:{step_err[k]/nb:.4f}" for k in range(K))
