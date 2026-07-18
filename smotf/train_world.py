@@ -64,7 +64,7 @@ def train_world(data=None,epochs=50,K=5,batch_size=256,lr=3e-4):
             #multi step rollout
             for k in range(K):
                 a=batch["a_future"][:,k] #B,12
-                m=batch["wm_mask"][:,k] #B, whether this step is real
+                m=batch["wm_mask"][:,k] #[B] at k(time step) whether this step is real
                 r_hat=reward(s,a) #pred reward
                 loss=loss+masked_mse(r_hat,batch["r_future"][:,k],m)
 
