@@ -312,3 +312,49 @@ $$\mathcal{L}_{\text{dyn}} = \big\| \hat{\mathbf{s}}_{t+1} - \mathbf{s}_{t+1}^{\
 $$\mathcal{L}_{\text{align}} = \big\| \mathbf{z}_{\text{prior}} - \text{sg}(\mathbf{z}_{\text{posterior}}) \big\|^2$$
 
 Suggested starting weights: $\lambda_{\text{FM}} = 1.0,\ \lambda_{\text{dyn}} = 0.5,\ \lambda_{\text{align}} = 0.1$.
+
+---
+
+## 6. World model + planning *(in progress — no results yet)*
+
+Behavior cloning caps s-motf at the teacher (the multi-skill result above is
+83–96% of the specialists, and cannot exceed them). This extension adds a
+**closed, rollable world model** so the policy can *plan* instead of only react —
+the one path that can surpass the teacher, by optimizing predicted reward rather
+than imitating.
+
+> Status: modules and the multi-step training/gate are implemented; **viability
+> on real Go1 dynamics is still being measured** (contact-rich dynamics are hard
+> to imagine — this may not work, and a negative result is a valid outcome). No
+> planning results are claimed here yet.
+
+**Why the Phase-1 dynamics head was not a world model.** `DynamicsHead` maps a
+256-d token → a 12-d *base* state. Its output type ≠ its input, so it can never be
+fed back in, never rolled forward, and is unused at deploy — an auxiliary loss, not
+a simulator.
+
+**The fix — a closed model in raw state space** (no latent needed; proprioception
+is only 40-d):
+
+$$\mathbf{s} = [\mathbf{s}_{\text{base}}, \mathbf{s}_{\text{legs}}, \mathbf{s}_{\text{contacts}}] \in \mathbb{R}^{40}, \qquad f_\phi(\mathbf{s}, \mathbf{a}) = \mathbf{s} + \Delta_\phi(\mathbf{s}, \mathbf{a}) \in \mathbb{R}^{40}, \qquad r_\psi(\mathbf{s}, \mathbf{a}) \in \mathbb{R}$$
+
+`f` outputs a **state-sized delta** (predicting the small change is far more stable
+than the absolute next state), so `s'` is a valid next input → the model is
+**chainable**. It is trained on its **own** K-step rollout (feeding predictions back
+in), which is what makes multi-step imagination stable:
+
+$$\mathcal{L}_{\text{world}} = \sum_{k=1}^{K} \big\| f_\phi^{(k)}(\mathbf{s}_t, \mathbf{a}_{t:t+k}) - \mathbf{s}_{t+k} \big\|^2 + \big\| r_\psi(\mathbf{s}_{t+k-1}, \mathbf{a}_{t+k-1}) - r_{t+k} \big\|^2$$
+
+**Planning (deploy) — the flow head proposes, the world model disposes.** MPC over
+the *generative* policy:
+
+```
+observe → sample N candidate actions from the flow head (its noise → N diverse actions)
+        → roll each through f for H steps, score with r
+        → execute the best candidate's first action → replan
+```
+
+The generative action head is essential here: an MLP is deterministic (one action,
+nothing to search), while sampling the flow head N times yields N distinct
+proposals. This is also the ablation with teeth — remove the world model and the
+planner falls back to plain `act()` (BC).
