@@ -137,6 +137,31 @@ def evaluate(action_fn, env, reset, step):
         rets.append(ret); survs.append(alive)
     return np.mean(rets), np.mean(survs)
 
+def make_planner(ckpt, skill_id, N=16, H=3):
+    """Action provider that PLANS: policy proposes N actions, world model imagines
+    them H steps, reward head scores, best is executed. Needs 3 trained files:
+    the policy (ckpt), world.pt, reward.pt."""
+    from smotf.model.world import WorldModel, RewardHead
+    from smotf.model.planner import Planner
+
+    cfg = load_config("configs/multiskill.yaml")               # command=6
+
+    # load the 3 trained modules onto CPU
+    smotf = SMoTF(cfg);  smotf.load_state_dict(torch.load(ckpt,        map_location="cpu")); smotf.eval()
+    world = WorldModel(cfg); world.load_state_dict(torch.load("world.pt",  map_location="cpu")); world.eval()
+    rew   = RewardHead(cfg); rew.load_state_dict(torch.load("reward.pt", map_location="cpu")); rew.eval()
+
+    planner = Planner(smotf, world, rew, cfg, N=N, H=H)         # the MPC wrapper
+
+    # same normalized-context builder the other providers use (velocity + skill-id command)
+    context, dnrm = make_context(torch.load("norm_stats.pt"), skill_id)
+
+    def act(state, key):                                       # called each env step
+        with torch.no_grad():
+            a = planner.plan(context(state))                  # [12] normalized best action
+        return jp.asarray(dnrm("action", a).numpy())          # denormalize -> jax action for env.step
+    return act
+
 
 def main():
     # load + jit each env ONCE (not per policy) -> 3 compiles instead of 12
@@ -154,6 +179,7 @@ def main():
         ("RL specialist", "spec"),
         ("s-motf multi", "smotf"),
         ("  - no plan", "smotf_noplan"),
+        ("s-motf + plan", "planner"),  
         ("MLP multi", "mlp"),
     ]:
         cells = []
@@ -165,6 +191,12 @@ def main():
                 ok = os.path.exists("checkpoint_multi.pt"); fn = (lambda sid=skill_id: make_smotf("checkpoint_multi.pt", True, sid)) if ok else None
             elif builder == "smotf_noplan":
                 ok = os.path.exists("checkpoint_multi_noplan.pt"); fn = (lambda sid=skill_id: make_smotf("checkpoint_multi_noplan.pt", False, sid)) if ok else None
+            elif builder == "planner":
+                # needs all three: policy + world model + reward head
+                ok = all(os.path.exists(f) for f in
+                         ["checkpoint_multi.pt", "world.pt", "reward.pt"])
+                fn = (lambda sid=skill_id: make_planner("checkpoint_multi.pt", sid)) if ok else None
+
             else:
                 ok = os.path.exists("checkpoint_mlp.pt"); fn = (lambda sid=skill_id: make_mlp("checkpoint_mlp.pt", sid)) if ok else None
             if fn is None:
