@@ -39,22 +39,23 @@ class WorldModel(nn.Module):
         return s+delta #s'=s+delta
     
 class RewardHead(nn.Module):
-    """r(s, a) -> scalar.   [B,40],[B,12] -> [B]   (the planner's scoring function)"""
+    """r(s, a，command) -> scalar.   [B,40],[B,12],[B,C] -> [B]   (the planner's scoring function)"""
 
     def __init__(self, cfg, hidden=256):
         super().__init__()
         d_s = state_dim(cfg)                       # 40
         d_a = cfg.dims.action                      # 12
+        d_c=cfg.dims.command                        # 6
         self.net = nn.Sequential(
-            nn.Linear(d_s + d_a, hidden),          # 52 -> 256
+            nn.Linear(d_s + d_a+d_c, hidden),          # 58 -> 256
             nn.SiLU(),                             # 256 -> 256
             nn.Linear(hidden, hidden),             # 256 -> 256
             nn.SiLU(),                             # 256 -> 256
             nn.Linear(hidden, 1),                  # 256 -> 1   (one reward value per sample)
         )
 
-    def forward(self, s, a):                       # s: [4,40], a: [4,12]
-        sa = torch.cat([s, a], dim=-1)             # [4,40]+[4,12] -> [4,52]
+    def forward(self, s, a,c):                       # s: [4,40], a: [4,12]
+        sa = torch.cat([s, a,c], dim=-1)             # [4,40]+[4,12] -> [4,52]
         r = self.net(sa)                           # [4,52] -> [4,1]  (trailing size-1 dim)
         return r.squeeze(-1)                        # [4,1] -> [4]     (drop the size-1 dim)
 if __name__ == "__main__":
