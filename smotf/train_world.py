@@ -65,7 +65,7 @@ def train_world(data=None,epochs=50,K=5,batch_size=256,lr=3e-4):
             for k in range(K):
                 a=batch["a_future"][:,k] #B,12
                 m=batch["wm_mask"][:,k] #[B] at k(time step) whether this step is real
-                r_hat=reward(s,a) #pred reward
+                r_hat=reward(s,a,batch["c_future"][:,k]) #pred reward
                 loss=loss+masked_mse(r_hat,batch["r_future"][:,k],m)
 
                 s=world(s,a)#next state
@@ -75,7 +75,7 @@ def train_world(data=None,epochs=50,K=5,batch_size=256,lr=3e-4):
                 step_err[k]+=se.item()
              # a separate 1-step reward error just for logging (uses the untouched real start state)
             
-            rew_err += masked_mse(reward(batch["state"], batch["a_future"][:, 0]),
+            rew_err += masked_mse(reward(batch["state"], batch["a_future"][:, 0],batch["c_future"][:,0]),
                                   batch["r_future"][:, 0], batch["wm_mask"][:, 0]).item()
 
             opt.zero_grad()                             # clear old gradients

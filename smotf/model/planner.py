@@ -45,7 +45,7 @@ class Planner:
         for k in range(self.H):
             ctx=self._state_to_context(s,cmd)
             a=self.smotf.act(ctx) #N,12
-            score=score+self.reward(s,a)
+            score=score+self.reward(s,a,cmd)
 
             if k==0:
                 first=a

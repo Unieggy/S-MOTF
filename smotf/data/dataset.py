@@ -63,6 +63,7 @@ class PlayWindowDataset(Dataset):
         # Phase 2: world-model rollout windows (opt-in)
         self.K=world_horizon
         self.d_action=cfg.dims.action
+        self.d_command=cfg.dims.command
         self.d_state=cfg.dims.base+cfg.dims.legs+cfg.dims.contacts   # 40 — the CLOSED state
 
         #we create a flat index list
@@ -123,6 +124,7 @@ class PlayWindowDataset(Dataset):
             sample["state"]=self._full_state(ep,t)                      # [40] at t
 
             a_future=torch.zeros(K,self.d_action)
+            c_future = torch.zeros(K, self.d_command)
             r_future=torch.zeros(K)
             s_future_full=torch.zeros(K,self.d_state)
             wm_mask=torch.zeros(K,dtype=torch.bool)
@@ -133,12 +135,14 @@ class PlayWindowDataset(Dataset):
                     a_future[k]=self._norm("action",ep["action"][t+k])
                     r_future[k]=ep["reward"][t+k].reshape(-1)[0]        # raw reward (not normalized)
                     s_future_full[k]=self._full_state(ep,t+k+1)
+                    c_future[k] = self._norm("command", ep["command"][t+k])
                     wm_mask[k]=True
 
             sample["a_future"]=a_future
             sample["r_future"]=r_future
             sample["s_future_full"]=s_future_full
             sample["wm_mask"]=wm_mask
+            sample["c_future"] = c_future
 
         return sample
 
