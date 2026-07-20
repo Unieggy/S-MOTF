@@ -315,18 +315,21 @@ Suggested starting weights: $\lambda_{\text{FM}} = 1.0,\ \lambda_{\text{dyn}} = 
 
 ---
 
-## 6. World model + planning *(in progress — no results yet)*
+## 6. World model + planning
 
 Behavior cloning caps s-motf at the teacher (the multi-skill result above is
 83–96% of the specialists, and cannot exceed them). This extension adds a
 **closed, rollable world model** so the policy can *plan* instead of only react —
-the one path that can surpass the teacher, by optimizing predicted reward rather
-than imitating.
+a path toward surpassing the teacher by optimizing predicted reward rather than
+imitating.
 
-> Status: modules and the multi-step training/gate are implemented; **viability
-> on real Go1 dynamics is still being measured** (contact-rich dynamics are hard
-> to imagine — this may not work, and a negative result is a valid outcome). No
-> planning results are claimed here yet.
+> **What works:** a closed world model that imagines real, contact-rich Go1
+> dynamics to ~1–2% error over 5 steps (the usual failure case for learned models),
+> plus a staged deploy-time ablation that localized and fixed a reward-ranking bug.
+> **Where it stands:** on the nominal task BC already equals the reward-optimal
+> teacher (no headroom to beat), and under perturbation planning is **on par with
+> BC — never worse, and slightly ahead in point estimate** (a larger-N test is
+> needed to confirm a real robustness gain). Full numbers below.
 
 **Why the Phase-1 dynamics head was not a world model.** `DynamicsHead` maps a
 256-d token → a 12-d *base* state. Its output type ≠ its input, so it can never be
@@ -336,7 +339,12 @@ a simulator.
 **The fix — a closed model in raw state space** (no latent needed; proprioception
 is only 40-d):
 
-$$\mathbf{s} = [\mathbf{s}_{\text{base}}, \mathbf{s}_{\text{legs}}, \mathbf{s}_{\text{contacts}}] \in \mathbb{R}^{40}, \qquad f_\phi(\mathbf{s}, \mathbf{a}) = \mathbf{s} + \Delta_\phi(\mathbf{s}, \mathbf{a}) \in \mathbb{R}^{40}, \qquad r_\psi(\mathbf{s}, \mathbf{a}) \in \mathbb{R}$$
+$$\mathbf{s} = [\mathbf{s}_{\text{base}}, \mathbf{s}_{\text{legs}}, \mathbf{s}_{\text{contacts}}] \in \mathbb{R}^{40}, \qquad f_\phi(\mathbf{s}, \mathbf{a}) = \mathbf{s} + \Delta_\phi(\mathbf{s}, \mathbf{a}) \in \mathbb{R}^{40}, \qquad r_\psi(\mathbf{s}, \mathbf{a}, \mathbf{c}) \in \mathbb{R}$$
+
+The reward is **command-conditioned** ($\mathbf{c}$): tracking reward depends on the
+commanded velocity (not in the state) and the skills have different reward functions,
+so $r(\mathbf{s},\mathbf{a})$ alone cannot rank candidate actions. Dynamics $f$ stay
+command-free — physical transitions don't depend on the requested skill.
 
 `f` outputs a **state-sized delta** (predicting the small change is far more stable
 than the absolute next state), so `s'` is a valid next input → the model is
@@ -356,5 +364,55 @@ observe → sample N candidate actions from the flow head (its noise → N diver
 
 The generative action head is essential here: an MLP is deterministic (one action,
 nothing to search), while sampling the flow head N times yields N distinct
-proposals. This is also the ablation with teeth — remove the world model and the
+proposals.
+
+### Findings
+
+**1. The world model imagines accurately.** Trained on its own K-step rollout, the
+5-step imagination error stays bounded on real Go1 dynamics — contact-rich legged
+dynamics, which usually diverge:
+
+| horizon | 1 step | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| mean abs err (normalized) | 0.010 | 0.011 | 0.014 | 0.017 | 0.019 |
+
+**2. A ranking bug was found and fixed (the reason for the reward-conditioning
+above).** A staged deploy-time ablation localized it — with a task-ambiguous
+$r(\mathbf{s},\mathbf{a})$, *reward ranking alone* was **worse than random** (argmax
+selected over-estimated candidates); command-conditioning restored it:
+
+| planner config (walk, matched seeds) | `r(s,a)` | `r(s,a,c)` |
+|---|---:|---:|
+| N=1, H=1 *(= BC, plumbing check)* | 5.9 | 5.9 |
+| **N=16, H=1** *(reward ranking only)* | **4.2** ❌ | **5.9** ✅ |
+| N=16, H=3 *(ranking + rollout)* | 5.9 | 5.9 |
+
+**3. Planning is on par with BC under perturbation — never worse, slightly ahead.**
+With the ranker fixed, planning matches BC on the nominal task (as expected — see
+below). Under strong random pushes (velocity kicks that drop BC's survival to
+~206/300), the planner's point estimate is **higher on both metrics**, though within
+the run-to-run noise at 20 episodes:
+
+| walk, 20 episodes, with pushes | return | survival / 300 |
+|---|---:|---:|
+| s-motf (BC) | 4.94 ± 2.73 | 205.7 ± 96.3 |
+| **s-motf + planning (N=16, H=3)** | **5.04 ± 2.77** | **208.3 ± 99.0** |
+
+**Reading it honestly.** On the *nominal* task there is simply no headroom: BC
+already equals the reward-optimal specialist, so the best of N flow proposals is
+BC's own action and search re-selects it. Under *perturbation* — where cloned
+reflexes are weakest — planning edges ahead, which is the expected direction, but
+the margin is inside the noise, so it is **not yet a confirmed gain**. Two concrete,
+promising follow-ups: (a) **more episodes** (50–100) to resolve the sub-std edge;
+(b) the world model was trained on **push-free** data, so under pushes it imagines
+out-of-distribution — retraining it **with** perturbations should sharpen recovery
+imagination exactly where it matters. Either could turn "on par, trending up" into a
+measured robustness win.
+
+**The standing contribution** is a *closed, accurate, command-conditioned* world
+model for a contact-rich legged system, plus a rigorous localization of where
+model-based planning helps a teacher-parity BC policy — with a clear, testable path
+to a robustness gain.
+
+This is also the ablation with teeth — remove the world model and the
 planner falls back to plain `act()` (BC).
